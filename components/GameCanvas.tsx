@@ -9,6 +9,11 @@ interface GameCanvasProps {
   inputMethod: InputMethod;
 }
 
+// Utility: Linear Interpolation for smoothing
+const lerp = (start: number, end: number, factor: number) => {
+  return start + (end - start) * factor;
+};
+
 export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGame, inputMethod }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -28,10 +33,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
 
   const imageRef = useRef<HTMLImageElement>(new Image());
 
-  const handPosRef = useRef<{ x: number, y: number, isPinching: boolean, isVisible: boolean }>({ 
-    x: 0, y: 0, isPinching: false, isVisible: false 
+  // PHYSICS ENGINE REFS
+  const rawHandRef = useRef<{ x: number, y: number, pinchDist: number, isVisible: boolean }>({ 
+    x: 0, y: 0, pinchDist: 100, isVisible: false 
   });
-  const prevPinchStateRef = useRef<boolean>(false);
+  
+  // Smoothed state for rendering and physics interactions
+  const cursorRef = useRef<{ x: number, y: number, vx: number, vy: number, isGrabbing: boolean }>({ 
+    x: 0, y: 0, vx: 0, vy: 0, isGrabbing: false 
+  });
+
   const mousePosRef = useRef<{ x: number, y: number, isDown: boolean }>({ x: 0, y: 0, isDown: false });
 
   const statsRef = useRef<{
@@ -247,6 +258,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
         const indexTip = landmarks[8];
         const thumbTip = landmarks[4];
         
+        // Raw calculation in screen space
         const x = (1 - ((indexTip.x + thumbTip.x) / 2)) * width;
         const y = ((indexTip.y + thumbTip.y) / 2) * height;
 
@@ -254,14 +266,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
         const dy = (indexTip.y - thumbTip.y) * height;
         const distance = Math.sqrt(dx * dx + dy * dy);
 
-        handPosRef.current = {
+        // Just update raw ref, physics loop handles smoothing
+        rawHandRef.current = {
           x,
           y,
-          isPinching: distance < mode.physics.pinchThreshold,
+          pinchDist: distance,
           isVisible: true
         };
       } else {
-        handPosRef.current.isVisible = false;
+        rawHandRef.current.isVisible = false;
       }
     };
 
@@ -339,6 +352,60 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
 
     const isPortrait = height > width;
 
+    // --- PHYSICS UPDATE STEP ---
+    
+    // 1. Determine Input Source
+    let inputX = mousePosRef.current.x;
+    let inputY = mousePosRef.current.y;
+    let inputGrab = mousePosRef.current.isDown;
+    let inputActive = true;
+
+    if (inputMethod === 'CAMERA') {
+        if (rawHandRef.current.isVisible) {
+            // Apply Low-Pass Filter (Smoothing)
+            // LERP factor 0.15 for smooth cursor, higher for responsiveness
+            const smoothFactor = 0.2; 
+            cursorRef.current.x = lerp(cursorRef.current.x, rawHandRef.current.x, smoothFactor);
+            cursorRef.current.y = lerp(cursorRef.current.y, rawHandRef.current.y, smoothFactor);
+            
+            // Calculate velocity of the HAND itself (for throwing)
+            cursorRef.current.vx = cursorRef.current.x - (cursorRef.current.x - (rawHandRef.current.x - cursorRef.current.x)); // Approximation
+            // Actually, better way:
+            // We need previous frame pos. Let's rely on the change in cursorRef between frames
+        } else {
+            inputActive = false;
+        }
+
+        inputX = cursorRef.current.x;
+        inputY = cursorRef.current.y;
+        
+        // Hysteresis Logic for Pinching
+        // To GRAB: Distance must be < threshold
+        // To RELEASE: Distance must be > threshold * 1.5 (stickier grip)
+        const grabThreshold = mode.physics.pinchThreshold;
+        const releaseThreshold = grabThreshold * 1.5;
+
+        if (cursorRef.current.isGrabbing) {
+            if (rawHandRef.current.pinchDist > releaseThreshold) {
+                cursorRef.current.isGrabbing = false;
+            }
+        } else {
+            if (rawHandRef.current.pinchDist < grabThreshold && inputActive) {
+                cursorRef.current.isGrabbing = true;
+            }
+        }
+        inputGrab = cursorRef.current.isGrabbing;
+    }
+
+    // Velocity calculation for throwing
+    const prevX = cursorRef.current.x;
+    const prevY = cursorRef.current.y;
+    // We already updated inputX/Y above, so:
+    const handVx = inputX - prevX; 
+    const handVy = inputY - prevY;
+
+    // --- RENDER STEP ---
+
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
 
@@ -391,22 +458,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
         ctx.globalAlpha = 1.0;
     }
 
-    let cursorX = mousePosRef.current.x;
-    let cursorY = mousePosRef.current.y;
-    let isGrabbing = mousePosRef.current.isDown;
-    let inputType = 'mouse';
-
-    if (handPosRef.current.isVisible) {
-      cursorX = handPosRef.current.x;
-      cursorY = handPosRef.current.y;
-      isGrabbing = handPosRef.current.isPinching;
-      inputType = 'hand';
-    }
-
-    if (isGrabbing && !prevPinchStateRef.current) {
+    // Record stats
+    const actuallyGrabbing = inputGrab; 
+    if (actuallyGrabbing && !cursorRef.current.isGrabbing && inputMethod === 'TOUCH') {
         statsRef.current.attempts++;
     }
-    prevPinchStateRef.current = isGrabbing;
+    // Update ref for next frame comparison (only needed for touch really, camera handles via hysteresis)
+    if (inputMethod === 'TOUCH') cursorRef.current.isGrabbing = actuallyGrabbing;
+
 
     const scale = mode.physics.scale || ELDERLY_SCALE;
     const responsiveFont = Math.min(Math.max(20, FONT_BASE_SIZE * scale), width / 15);
@@ -420,10 +479,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
            word.x += word.vx;
            word.y += word.vy;
            
-           if (word.x < CANVAS_PADDING) word.vx = Math.abs(word.vx);
-           if (word.x > width - CANVAS_PADDING) word.vx = -Math.abs(word.vx);
-           if (word.y < CANVAS_PADDING) word.vy = Math.abs(word.vy);
-           if (word.y > height - CANVAS_PADDING) word.vy = -Math.abs(word.vy);
+           // Friction/Damping for thrown objects
+           word.vx *= 0.98;
+           word.vy *= 0.98;
+           
+           // Keep minimum movement for "float" feel
+           const minSpeed = mode.physics.speed * 0.5;
+           if (Math.abs(word.vx) < minSpeed && Math.abs(word.vy) < minSpeed) {
+                // drift logic
+           }
+           
+           if (word.x < CANVAS_PADDING) { word.x = CANVAS_PADDING; word.vx = Math.abs(word.vx); }
+           if (word.x > width - CANVAS_PADDING) { word.x = width - CANVAS_PADDING; word.vx = -Math.abs(word.vx); }
+           if (word.y < CANVAS_PADDING) { word.y = CANVAS_PADDING; word.vy = Math.abs(word.vy); }
+           if (word.y > height - CANVAS_PADDING) { word.y = height - CANVAS_PADDING; word.vy = -Math.abs(word.vy); }
        }
 
        if (word.width === 0) {
@@ -434,22 +503,34 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
        const halfW = word.width / 2 + hitPadding;
        const halfH = responsiveFont / 2 + hitPadding;
 
-       const isHovering = cursorX > word.x - halfW && cursorX < word.x + halfW && cursorY > word.y - halfH && cursorY < word.y + halfH;
+       const isHovering = inputX > word.x - halfW && inputX < word.x + halfW && inputY > word.y - halfH && inputY < word.y + halfH;
        
-       if (isGrabbing && isHovering && !gameStateRef.current.words.some(w => w !== word && w.isGrabbed)) {
+       if (actuallyGrabbing && isHovering && !gameStateRef.current.words.some(w => w !== word && w.isGrabbed)) {
            if (!word.isGrabbed) {
               word.isGrabbed = true;
+              if (inputMethod === 'CAMERA') statsRef.current.attempts++;
               playSound('grab');
            }
        }
        
-       if (!isGrabbing) {
+       if (!actuallyGrabbing && word.isGrabbed) {
            word.isGrabbed = false;
+           // THROW PHYSICS: Transfer hand velocity to word
+           // Cap velocity to avoid super-sonic words
+           word.vx = Math.max(-15, Math.min(15, handVx * 0.5)); 
+           word.vy = Math.max(-15, Math.min(15, handVy * 0.5));
        }
 
        if (word.isGrabbed) {
-           word.x = cursorX;
-           word.y = cursorY;
+           // Spring physics drag
+           // Instead of snapping to inputX/Y, we lerp towards it
+           const springStrength = 0.2;
+           word.x = lerp(word.x, inputX, springStrength);
+           word.y = lerp(word.y, inputY, springStrength);
+           
+           // Update velocity so if we release, it has momentum
+           word.vx = (inputX - word.x); 
+           word.vy = (inputY - word.y);
 
            if (word.x > imgX && word.x < imgX + imgSize && word.y > imgY && word.y < imgY + imgSize) {
                if (word.text === gameStateRef.current.targetWord) {
@@ -464,9 +545,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
                    playSound('error');
                    gameStateRef.current.feedbackColor = "#FF0000";
                    gameStateRef.current.feedbackTimer = 10;
-                   word.vx = (word.x - width/2) * 0.1;
-                   word.vy = (word.y - height/2) * 0.1;
-                   word.x = word.x < width/2 ? width * 0.1 : width * 0.9;
+                   // Bounce away hard
+                   const angle = Math.atan2(word.y - (imgY + imgSize/2), word.x - (imgX + imgSize/2));
+                   word.vx = Math.cos(angle) * 10;
+                   word.vy = Math.sin(angle) * 10;
                    word.isGrabbed = false;
                }
            }
@@ -485,21 +567,31 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
        }
     });
 
+    // Draw Cursor
     ctx.beginPath();
-    ctx.arc(cursorX, cursorY, 15, 0, Math.PI * 2);
-    ctx.fillStyle = isGrabbing ? mode.theme.primary : 'transparent';
+    ctx.arc(inputX, inputY, 15, 0, Math.PI * 2);
+    ctx.fillStyle = actuallyGrabbing ? mode.theme.primary : 'transparent';
     ctx.strokeStyle = mode.theme.primary;
     ctx.lineWidth = 3;
     ctx.fill();
     ctx.stroke();
 
-    if (inputType === 'hand' && !isGrabbing) {
+    if (inputMethod === 'CAMERA' && !actuallyGrabbing && inputActive) {
         ctx.beginPath();
-        ctx.arc(cursorX, cursorY, mode.physics.pinchThreshold, 0, Math.PI*2);
+        // Show the threshold circle to help user know how close to pinch
+        ctx.arc(inputX, inputY, mode.physics.pinchThreshold, 0, Math.PI*2);
         ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
         ctx.setLineDash([5, 5]);
         ctx.stroke();
         ctx.setLineDash([]);
+        
+        // Show raw input ghost for debugging lag (optional, but good for "Pro" feel)
+        /*
+        ctx.beginPath();
+        ctx.arc(rawHandRef.current.x, rawHandRef.current.y, 5, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(255,0,0,0.5)';
+        ctx.fill();
+        */
      }
 
     requestRef.current = requestAnimationFrame(animate);
