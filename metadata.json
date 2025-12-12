@@ -1,0 +1,7 @@
+{
+  "name": "Silver Neuro-Gym",
+  "description": "Universal Therapeutic Motion Platform for cognitive and motor therapy.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
