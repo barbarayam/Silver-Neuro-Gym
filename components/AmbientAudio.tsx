@@ -22,8 +22,16 @@ export const AmbientAudio: React.FC<AmbientAudioProps> = ({ enabled }) => {
       masterGain.connect(ctx.destination);
       masterGainRef.current = masterGain;
 
-      // Solfeggio 174 Hz (Pain relief/Safety) based chord
-      const frequencies = [174, 174 * 1.5, 174 * 2, 174 * 0.5]; // Root, Fifth, Octave, Sub-Octave
+      // SOOTHING & OPTIMISTIC COMPOSITION
+      // Lowered the octave for warmth (calm), kept Major 7th/9th intervals for optimism.
+      // C3, G3, B3, E4, D4
+      const frequencies = [
+        130.81, // C3 - Warm root anchor
+        196.00, // G3 - Stability
+        246.94, // B3 - Major 7th (Hopeful/Dreamy)
+        329.63, // E4 - Major 3rd (Optimism)
+        293.66  // D4 - 9th (Gentle, uplifting extension)
+      ]; 
 
       frequencies.forEach((freq, i) => {
         const osc = ctx.createOscillator();
@@ -31,18 +39,19 @@ export const AmbientAudio: React.FC<AmbientAudioProps> = ({ enabled }) => {
         const lfo = ctx.createOscillator();
         const lfoGain = ctx.createGain();
 
-        // Use Sine waves for pure, soothing tone
+        // Use Sine waves for pure, non-fatiguing, soothing texture
         osc.type = 'sine';
         osc.frequency.value = freq;
 
-        // LFO creates a "breathing" effect by modulating volume
+        // Very slow LFO for a "breathing" rhythm (Calm)
         lfo.type = 'sine';
-        lfo.frequency.value = 0.05 + (Math.random() * 0.1); // Slow breathing (10-20s cycles)
+        // 0.05Hz to 0.1Hz = 10 to 20 seconds per cycle
+        lfo.frequency.value = 0.05 + (Math.random() * 0.05); 
         
-        lfoGain.gain.value = 0.15; // Modulation depth
+        lfoGain.gain.value = 0.15; // Gentle volume swelling
         
-        // Base volume for this oscillator
-        oscGain.gain.value = 0.1;
+        // Lower volume to create a background pad
+        oscGain.gain.value = 0.08;
 
         // Connections: LFO -> LFO Gain -> Osc Gain -> Master Gain
         lfo.connect(lfoGain);
@@ -67,17 +76,17 @@ export const AmbientAudio: React.FC<AmbientAudioProps> = ({ enabled }) => {
         audioCtxRef.current.resume();
       }
       if (masterGainRef.current) {
-        masterGainRef.current.gain.setTargetAtTime(0.3, audioCtxRef.current!.currentTime, 2);
+        masterGainRef.current.gain.setTargetAtTime(0.3, audioCtxRef.current!.currentTime, 3);
       }
     } else {
       // Fade out
       if (masterGainRef.current && audioCtxRef.current) {
-        masterGainRef.current.gain.setTargetAtTime(0, audioCtxRef.current.currentTime, 0.5);
+        masterGainRef.current.gain.setTargetAtTime(0, audioCtxRef.current.currentTime, 1);
         setTimeout(() => {
             if (audioCtxRef.current?.state === 'running') {
                 audioCtxRef.current.suspend();
             }
-        }, 600);
+        }, 1100);
       }
     }
 

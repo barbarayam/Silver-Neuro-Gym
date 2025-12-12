@@ -128,24 +128,18 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
     setRoundInfo({ current: index + 1, total: list.length });
 
     // --- ROBUST IMAGE LOADING STRATEGY ---
-    // 1. Try Curated Unsplash Image
-    // 2. If fail, Try LoremFlickr (Dynamic)
-    // 3. If fail, Use Text Placeholder
-    
     const curatedImage = WORD_IMAGES[target];
     
     const loadFallback = () => {
         console.log(`Primary image failed for ${target}, trying fallback...`);
         imageRef.current.onerror = () => {
             console.log(`Fallback failed for ${target}, using placeholder.`);
-            // Final fallback: High contrast placeholder with text
             imageRef.current.src = `https://placehold.co/600x600/000000/FFFFFF/png?text=${target}`;
         };
-        // Use random lock to ensure a fresh attempt
         imageRef.current.src = `https://loremflickr.com/500/500/${target.toLowerCase()}?lock=${Date.now()}`;
     };
 
-    imageRef.current.removeAttribute('crossOrigin'); // Ensure no CORS checks
+    imageRef.current.removeAttribute('crossOrigin'); 
     
     imageRef.current.onload = () => { 
         gameStateRef.current.isImageLoaded = true; 
@@ -160,8 +154,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
     // -------------------------------------
 
     const allDistractors = getAllWords().filter(w => w !== target);
-    
-    // Use spawnCount from physics config, default to 4 (1 target + 3 distractors) if missing
     const totalWords = mode.physics.spawnCount || 4;
     const numDistractors = Math.max(0, totalWords - 1);
 
@@ -178,7 +170,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
         [roundWords[i], roundWords[j]] = [roundWords[j], roundWords[i]];
     }
 
-    // Use scale from physics config
     const scale = mode.physics.scale || ELDERLY_SCALE;
     const width = window.innerWidth;
     const height = window.innerHeight;
@@ -191,14 +182,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
       let spawnX, spawnY;
       
       if (isPortrait) {
-        // In portrait, keep center area clear for image
-        // Top 15% or Bottom 15%
         const isTop = Math.random() > 0.5;
         spawnY = isTop ? height * 0.15 : height * 0.85;
-        // Keep away from absolute edges
         spawnX = width * 0.2 + (Math.random() * width * 0.6); 
       } else {
-        // Landscape
         const isLeft = Math.random() > 0.5;
         spawnX = isLeft ? width * 0.15 : width * 0.85;
         spawnY = height * 0.2 + (Math.random() * height * 0.6); 
@@ -373,7 +360,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
 
     // Responsive Image Size
     const baseSize = Math.min(width, height);
-    // On mobile (<600), make image slightly larger relative to screen to ensure visibility
     const imgSize = baseSize * (width < 600 ? 0.65 : 0.45);
     const imgX = (width - imgSize) / 2;
     const imgY = (height - imgSize) / 2;
@@ -383,7 +369,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
     ctx.strokeRect(imgX, imgY, imgSize, imgSize);
 
     if (gameStateRef.current.isImageLoaded) {
-        // Draw image keeping aspect ratio 'cover' within the square
         const img = imageRef.current;
         const scale = Math.max(imgSize / img.width, imgSize / img.height);
         const x = (imgSize - img.width * scale) / 2;
@@ -423,9 +408,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
     }
     prevPinchStateRef.current = isGrabbing;
 
-    // Use scale from physics config, tuned for mobile
     const scale = mode.physics.scale || ELDERLY_SCALE;
-    // Limit font size to avoid overflow on very small screens, but keep it large enough for seniors
     const responsiveFont = Math.min(Math.max(20, FONT_BASE_SIZE * scale), width / 15);
     
     ctx.font = `bold ${responsiveFont}px ${mode.theme.font}`;
@@ -539,12 +522,41 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
         />
       )}
       <canvas ref={canvasRef} className="absolute inset-0 z-0 touch-none" />
-      <div className="absolute top-4 left-4 z-10 pointer-events-none">
-        <h3 className="text-sm md:text-xl font-mono" style={{ color: mode.theme.primary }}>
-          {category} | {roundInfo.current}/{roundInfo.total}
-        </h3>
+      
+      <div className="absolute top-4 left-4 z-10 pointer-events-none select-none">
+        <div className="flex items-baseline gap-2 mb-2">
+          <h3 className="text-sm md:text-xl font-bold font-mono tracking-wider" style={{ color: mode.theme.primary }}>
+            {category}
+          </h3>
+          <span className="text-xs font-mono opacity-60" style={{ color: mode.theme.secondary }}>
+             {roundInfo.current} / {roundInfo.total}
+          </span>
+        </div>
+
+        {/* Visual Progress Bar */}
+        <div className="flex items-center gap-1 w-48 md:w-64 h-3">
+            {Array.from({ length: Math.max(1, roundInfo.total) }).map((_, i) => {
+                const isCompleted = i < roundInfo.current - 1;
+                const isCurrent = i === roundInfo.current - 1;
+                return (
+                    <div 
+                        key={i}
+                        className={`h-full flex-1 rounded-sm transition-all duration-300 ${isCurrent ? 'animate-pulse' : ''}`}
+                        style={{
+                            backgroundColor: isCompleted || isCurrent ? mode.theme.primary : 'rgba(255,255,255,0.1)',
+                            opacity: isCompleted ? 1 : isCurrent ? 1 : 0.2,
+                            boxShadow: isCurrent ? `0 0 10px ${mode.theme.primary}` : 'none',
+                            border: isCurrent ? `1px solid ${mode.theme.secondary}` : 'none'
+                        }}
+                    />
+                );
+            })}
+        </div>
+
         {statusMessage && (
-             <p className="text-xs md:text-sm text-red-400 mt-2 animate-pulse">{statusMessage}</p>
+             <p className="text-xs md:text-sm text-red-400 mt-2 animate-pulse font-mono tracking-widest uppercase">
+                ⚠ {statusMessage}
+             </p>
         )}
       </div>
 

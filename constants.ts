@@ -5,7 +5,7 @@ export const GAME_DATA = {
   CATEGORIES: {
     "ESSENTIALS": ["KEYS", "GLASSES", "PHONE", "CUP", "SPOON"],
     "NOURISHMENT": ["APPLE", "BREAD", "WATER", "EGG", "MILK"],
-    "BODY": ["HAND", "FACE", "EYES", "FEET", "HAIR"]
+    "ANIMALS": ["DOG", "CAT", "BIRD", "FISH", "LION"]
   },
   
   // PROGRESSIVE DIFFICULTY SETTINGS
@@ -53,12 +53,12 @@ export const WORD_IMAGES: Record<string, string> = {
   "EGG": "https://images.unsplash.com/photo-1587486913049-53fc88980fa1?w=500&q=80",
   "MILK": "https://images.unsplash.com/photo-1563636619-e9143da7973b?w=500&q=80",
 
-  // BODY
-  "HAND": "https://images.unsplash.com/photo-1466611653911-95081537e5b7?w=500&q=80",
-  "FACE": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500&q=80",
-  "EYES": "https://images.unsplash.com/photo-1597223506659-02f5720bc27c?w=500&q=80",
-  "FEET": "https://images.unsplash.com/photo-1519689680058-324335c77eba?w=500&q=80",
-  "HAIR": "https://images.unsplash.com/photo-1521590832169-6d5f76f4e243?w=500&q=80"
+  // ANIMALS
+  "DOG": "https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=500&q=80",
+  "CAT": "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=500&q=80",
+  "BIRD": "https://images.unsplash.com/photo-1444464666168-49d633b86797?w=500&q=80",
+  "FISH": "https://images.unsplash.com/photo-1524704654690-b56c05c78a00?w=500&q=80",
+  "LION": "https://images.unsplash.com/photo-1614027164847-1b28cfe1df60?w=500&q=80"
 };
 
 export const MODES: ModesMap = {
