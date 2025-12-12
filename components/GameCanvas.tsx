@@ -127,18 +127,37 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({ mode, category, onEndGam
     gameStateRef.current.feedbackColor = "";
     setRoundInfo({ current: index + 1, total: list.length });
 
-    // Use curated image if available, else fallback to loremflickr with specific tags
-    const curatedImage = WORD_IMAGES[target];
-    const imgUrl = curatedImage || `https://loremflickr.com/500/500/${target.toLowerCase()},object?lock=${Math.random()}`;
+    // --- ROBUST IMAGE LOADING STRATEGY ---
+    // 1. Try Curated Unsplash Image
+    // 2. If fail, Try LoremFlickr (Dynamic)
+    // 3. If fail, Use Text Placeholder
     
-    // Explicitly remove crossOrigin to avoid CORS errors with images that don't need pixel access
-    imageRef.current.removeAttribute('crossOrigin');
-    imageRef.current.src = imgUrl;
-    imageRef.current.onload = () => { gameStateRef.current.isImageLoaded = true; };
-    imageRef.current.onerror = () => { 
-      // Fallback if image fails
-      imageRef.current.src = "https://placehold.co/600x400/000000/FFFFFF/png?text=Image+Load+Error"; 
+    const curatedImage = WORD_IMAGES[target];
+    
+    const loadFallback = () => {
+        console.log(`Primary image failed for ${target}, trying fallback...`);
+        imageRef.current.onerror = () => {
+            console.log(`Fallback failed for ${target}, using placeholder.`);
+            // Final fallback: High contrast placeholder with text
+            imageRef.current.src = `https://placehold.co/600x600/000000/FFFFFF/png?text=${target}`;
+        };
+        // Use random lock to ensure a fresh attempt
+        imageRef.current.src = `https://loremflickr.com/500/500/${target.toLowerCase()}?lock=${Date.now()}`;
     };
+
+    imageRef.current.removeAttribute('crossOrigin'); // Ensure no CORS checks
+    
+    imageRef.current.onload = () => { 
+        gameStateRef.current.isImageLoaded = true; 
+    };
+    
+    if (curatedImage) {
+        imageRef.current.onerror = loadFallback;
+        imageRef.current.src = curatedImage;
+    } else {
+        loadFallback();
+    }
+    // -------------------------------------
 
     const allDistractors = getAllWords().filter(w => w !== target);
     
